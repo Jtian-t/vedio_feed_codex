@@ -38,7 +38,7 @@ From this repository root, build with:
 
 - [x] Full-screen vertical `RecyclerView` with `PagerSnapHelper`
 - [x] 10,000 generated Feed identities from 100 MP4 catalog entries
-- [x] Local like and comment placeholder state
+- [x] Local like toggle with count updates and comment panel with input/list state
 - [x] Unsupported HLS-only handling
 - [x] Low-level audio-video `MediaCodec` playback with `AudioTrack` audio output
 - [x] Software PCM resampling for real speed-up playback up to `5.0x`
@@ -76,4 +76,5 @@ See [docs/architecture.md](docs/architecture.md) for the component-level design.
 - Drag the progress bar and release; seek is performed on release to avoid repeated decoder flushes.
 - Press Home or switch apps, wait a few seconds, then return from Recents. The current item should prepare again from the remembered position.
 - After a cold relaunch, wait until the first page is attached before fast swiping through multiple pages.
+
 

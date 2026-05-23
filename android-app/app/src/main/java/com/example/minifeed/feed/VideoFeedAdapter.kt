@@ -7,8 +7,12 @@ import android.view.MotionEvent
 import android.view.TextureView
 import android.view.View
 import android.view.ViewGroup
+import android.text.InputType
+import android.widget.Button
+import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.SeekBar
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
@@ -93,27 +97,37 @@ class VideoFeedAdapter(
             longPressSpeedRunnable?.let { pageView.removeCallbacks(it) }
             longPressSpeedRunnable = null
             pageView.showSpeedBadge(Tunables.NORMAL_PLAYBACK_SPEED, visible = false)
+            pageView.hideComments()
             pageView.applyVideoTransform(item.width, item.height)
             val state = socialStates.getOrPut(item.id) { item.social }
             pageView.title.text = item.title
             pageView.author.text = "@${item.author}"
-            pageView.like.text = if (state.liked) "Liked ${state.likeCount}" else "Like ${state.likeCount}"
-            pageView.comment.text = "Comments ${state.comments.size}"
+            pageView.renderSocial(state)
             pageView.unsupported.visibility = if (item.playableVariant == null) View.VISIBLE else View.GONE
             pageView.like.setOnClickListener {
-                val current = socialStates[item.id] ?: state
+                val current = socialStates[item.id] ?: item.social
                 val next = current.copy(
                     liked = !current.liked,
-                    likeCount = current.likeCount + if (current.liked) -1 else 1
+                    likeCount = (current.likeCount + if (current.liked) -1 else 1).coerceAtLeast(0)
                 )
                 socialStates[item.id] = next
-                pageView.like.text = if (next.liked) "Liked ${next.likeCount}" else "Like ${next.likeCount}"
+                pageView.renderSocial(next)
             }
             pageView.comment.setOnClickListener {
-                val current = socialStates[item.id] ?: state
-                val next = current.copy(comments = current.comments + "Local note for ${item.title}")
+                pageView.showComments(socialStates[item.id] ?: item.social)
+            }
+            pageView.commentClose.setOnClickListener {
+                pageView.hideComments()
+            }
+            pageView.commentSend.setOnClickListener {
+                val text = pageView.commentInput.text?.toString()?.trim().orEmpty()
+                if (text.isEmpty()) return@setOnClickListener
+                val current = socialStates[item.id] ?: item.social
+                val next = current.copy(comments = current.comments + text)
                 socialStates[item.id] = next
-                pageView.comment.text = "Comments ${next.comments.size}"
+                pageView.commentInput.text?.clear()
+                pageView.renderSocial(next)
+                pageView.showComments(next)
             }
             pageView.progress.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
@@ -228,6 +242,12 @@ class VideoPageView(context: android.content.Context) : FrameLayout(context) {
     val author = TextView(context)
     val like = TextView(context)
     val comment = TextView(context)
+    val commentsPanel = LinearLayout(context)
+    val commentsTitle = TextView(context)
+    val commentsList = LinearLayout(context)
+    val commentInput = EditText(context)
+    val commentSend = Button(context)
+    val commentClose = Button(context)
     val unsupported = TextView(context)
     val error = TextView(context)
     val playIndicator = TextView(context)
@@ -278,6 +298,54 @@ class VideoPageView(context: android.content.Context) : FrameLayout(context) {
         }
         addView(side, LayoutParams(220, LayoutParams.WRAP_CONTENT, Gravity.END or Gravity.BOTTOM))
 
+        commentsPanel.orientation = LinearLayout.VERTICAL
+        commentsPanel.setPadding(28, 20, 28, 24)
+        commentsPanel.setBackgroundColor(0xEE111111.toInt())
+        commentsPanel.visibility = View.GONE
+        commentsPanel.isClickable = true
+        commentsPanel.isFocusable = true
+
+        val commentsHeader = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        commentsTitle.setTextColor(Color.WHITE)
+        commentsTitle.textSize = 18f
+        commentClose.text = "Close"
+        commentsHeader.addView(
+            commentsTitle,
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        )
+        commentsHeader.addView(commentClose)
+        commentsPanel.addView(commentsHeader)
+
+        val commentsScroll = ScrollView(context)
+        commentsList.orientation = LinearLayout.VERTICAL
+        commentsList.setPadding(0, 12, 0, 12)
+        commentsScroll.addView(commentsList)
+        commentsPanel.addView(
+            commentsScroll,
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
+        )
+
+        val commentComposer = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        commentInput.hint = "Add a comment"
+        commentInput.setTextColor(Color.WHITE)
+        commentInput.setHintTextColor(Color.LTGRAY)
+        commentInput.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+        commentInput.setSingleLine(true)
+        commentSend.text = "Send"
+        commentComposer.addView(
+            commentInput,
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        )
+        commentComposer.addView(commentSend)
+        commentsPanel.addView(commentComposer)
+        addView(commentsPanel, LayoutParams(LayoutParams.MATCH_PARENT, heightPx(320), Gravity.BOTTOM))
+
         unsupported.text = "Unsupported source"
         unsupported.setTextColor(Color.WHITE)
         unsupported.textSize = 18f
@@ -311,6 +379,32 @@ class VideoPageView(context: android.content.Context) : FrameLayout(context) {
     fun showSpeedBadge(speed: Float, visible: Boolean) {
         speedBadge.text = String.format(Locale.US, "%.1fx", speed)
         speedBadge.visibility = if (visible) View.VISIBLE else View.GONE
+    }
+
+    fun renderSocial(state: LocalSocialState) {
+        like.text = if (state.liked) "Liked\n${state.likeCount}" else "Like\n${state.likeCount}"
+        comment.text = "Comments\n${state.comments.size}"
+        if (commentsPanel.visibility == View.VISIBLE) {
+            showComments(state)
+        }
+    }
+
+    fun showComments(state: LocalSocialState) {
+        commentsTitle.text = "Comments (${state.comments.size})"
+        commentsList.removeAllViews()
+        if (state.comments.isEmpty()) {
+            commentsList.addView(commentRow("No comments yet"))
+        } else {
+            state.comments.forEachIndexed { index, text ->
+                commentsList.addView(commentRow("${index + 1}. $text"))
+            }
+        }
+        commentsPanel.visibility = View.VISIBLE
+    }
+
+    fun hideComments() {
+        commentsPanel.visibility = View.GONE
+        commentInput.text?.clear()
     }
 
     fun applyVideoTransform(videoWidth: Int, videoHeight: Int) {
@@ -369,5 +463,18 @@ class VideoPageView(context: android.content.Context) : FrameLayout(context) {
         val matrix = Matrix()
         matrix.setScale(scaleX, scaleY, viewWidth / 2f, viewHeight / 2f)
         textureView.setTransform(matrix)
+    }
+
+    private fun commentRow(text: String): TextView {
+        return TextView(context).apply {
+            this.text = text
+            setTextColor(Color.WHITE)
+            textSize = 14f
+            setPadding(0, 10, 0, 10)
+        }
+    }
+
+    private fun heightPx(dp: Int): Int {
+        return (dp * resources.displayMetrics.density).toInt()
     }
 }
