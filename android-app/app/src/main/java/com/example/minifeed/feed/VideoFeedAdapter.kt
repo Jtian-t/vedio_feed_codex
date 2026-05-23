@@ -2,6 +2,11 @@ package com.example.minifeed
 
 import android.graphics.Color
 import android.graphics.Matrix
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.RectF
+import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.TextureView
@@ -246,10 +251,10 @@ class VideoPageView(context: android.content.Context) : FrameLayout(context) {
     val title = TextView(context)
     val author = TextView(context)
     val like = LinearLayout(context)
-    val likeIcon = TextView(context)
+    val likeIcon = HeartIconView(context)
     val likeCount = TextView(context)
     val comment = LinearLayout(context)
-    val commentIcon = TextView(context)
+    val commentIcon = CommentIconView(context)
     val commentCount = TextView(context)
     val commentsPanel = LinearLayout(context)
     val commentsTitle = TextView(context)
@@ -296,17 +301,21 @@ class VideoPageView(context: android.content.Context) : FrameLayout(context) {
         val side = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(12, 12, 24, 160)
         }
-        configureSocialButton(like, likeIcon, likeCount, HEART_OUTLINE)
-        configureSocialButton(comment, commentIcon, commentCount, COMMENT_ICON)
+        configureSocialButton(like, likeIcon, likeCount)
+        configureSocialButton(comment, commentIcon, commentCount)
         side.addView(like)
         side.addView(comment)
-        addView(side, LayoutParams(220, LayoutParams.WRAP_CONTENT, Gravity.END or Gravity.BOTTOM))
+        val sideParams = LayoutParams(widthPx(88), LayoutParams.WRAP_CONTENT, Gravity.END or Gravity.BOTTOM)
+        sideParams.setMargins(0, 0, widthPx(14), heightPx(116))
+        addView(side, sideParams)
 
         commentsPanel.orientation = LinearLayout.VERTICAL
         commentsPanel.setPadding(28, 20, 28, 24)
-        commentsPanel.setBackgroundColor(0xEE111111.toInt())
+        commentsPanel.background = GradientDrawable().apply {
+            setColor(0xF2121212.toInt())
+            cornerRadii = floatArrayOf(28f, 28f, 28f, 28f, 0f, 0f, 0f, 0f)
+        }
         commentsPanel.visibility = View.GONE
         commentsPanel.isClickable = true
         commentsPanel.isFocusable = true
@@ -341,6 +350,7 @@ class VideoPageView(context: android.content.Context) : FrameLayout(context) {
         commentInput.hint = "Add a comment"
         commentInput.setTextColor(Color.WHITE)
         commentInput.setHintTextColor(Color.LTGRAY)
+        commentInput.setBackgroundColor(0x22FFFFFF)
         commentInput.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
         commentInput.setSingleLine(true)
         commentSend.text = "Send"
@@ -388,8 +398,7 @@ class VideoPageView(context: android.content.Context) : FrameLayout(context) {
     }
 
     fun renderSocial(state: LocalSocialState) {
-        likeIcon.text = if (state.liked) HEART_FILLED else HEART_OUTLINE
-        likeIcon.setTextColor(if (state.liked) LIKE_RED else Color.BLACK)
+        likeIcon.setLiked(state.liked)
         likeCount.text = state.likeCount.coerceAtLeast(0).toString()
         commentCount.text = state.comments.size.toString()
         if (commentsPanel.visibility == View.VISIBLE) {
@@ -486,24 +495,89 @@ class VideoPageView(context: android.content.Context) : FrameLayout(context) {
         return (dp * resources.displayMetrics.density).toInt()
     }
 
-    private fun configureSocialButton(container: LinearLayout, icon: TextView, count: TextView, iconText: String) {
+    private fun widthPx(dp: Int): Int {
+        return (dp * resources.displayMetrics.density).toInt()
+    }
+
+    private fun configureSocialButton(container: LinearLayout, icon: View, count: TextView) {
         container.orientation = LinearLayout.VERTICAL
         container.gravity = Gravity.CENTER
-        container.setPadding(12, 14, 12, 14)
-        icon.text = iconText
-        icon.textSize = 32f
-        icon.gravity = Gravity.CENTER
+        container.minimumWidth = widthPx(56)
+        container.minimumHeight = heightPx(64)
+        container.setPadding(6, 10, 6, 10)
         count.setTextColor(Color.WHITE)
         count.textSize = 12f
         count.gravity = Gravity.CENTER
-        container.addView(icon, LinearLayout.LayoutParams(72, 52))
-        container.addView(count, LinearLayout.LayoutParams(72, LinearLayout.LayoutParams.WRAP_CONTENT))
+        count.setShadowLayer(3f, 0f, 1f, Color.BLACK)
+        container.addView(icon, LinearLayout.LayoutParams(widthPx(42), heightPx(42)))
+        container.addView(count, LinearLayout.LayoutParams(widthPx(56), LinearLayout.LayoutParams.WRAP_CONTENT))
+    }
+}
+
+class HeartIconView(context: android.content.Context) : View(context) {
+    private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+    }
+    private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        style = Paint.Style.STROKE
+        strokeWidth = 4f
+        strokeJoin = Paint.Join.ROUND
+        strokeCap = Paint.Cap.ROUND
+    }
+    private val path = Path()
+    private var liked = false
+
+    fun setLiked(liked: Boolean) {
+        if (this.liked == liked) return
+        this.liked = liked
+        invalidate()
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        val w = width.toFloat()
+        val h = height.toFloat()
+        path.reset()
+        path.moveTo(w * 0.5f, h * 0.84f)
+        path.cubicTo(w * 0.08f, h * 0.56f, w * 0.02f, h * 0.26f, w * 0.24f, h * 0.14f)
+        path.cubicTo(w * 0.38f, h * 0.06f, w * 0.48f, h * 0.15f, w * 0.5f, h * 0.27f)
+        path.cubicTo(w * 0.52f, h * 0.15f, w * 0.62f, h * 0.06f, w * 0.76f, h * 0.14f)
+        path.cubicTo(w * 0.98f, h * 0.26f, w * 0.92f, h * 0.56f, w * 0.5f, h * 0.84f)
+        path.close()
+
+        fillPaint.color = if (liked) LIKE_RED else UNLIKED_FILL
+        canvas.drawPath(path, fillPaint)
+        canvas.drawPath(path, strokePaint)
     }
 
     private companion object {
-        const val HEART_OUTLINE = "♡"
-        const val HEART_FILLED = "♥"
-        const val COMMENT_ICON = "☰"
-        const val LIKE_RED = 0xFFE91E63.toInt()
+        const val LIKE_RED = 0xFFFF2D55.toInt()
+        const val UNLIKED_FILL = 0xCC111111.toInt()
+    }
+}
+
+class CommentIconView(context: android.content.Context) : View(context) {
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        style = Paint.Style.STROKE
+        strokeWidth = 4f
+        strokeJoin = Paint.Join.ROUND
+        strokeCap = Paint.Cap.ROUND
+    }
+    private val bubble = RectF()
+    private val tail = Path()
+
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        val inset = 6f
+        bubble.set(inset, inset, width - inset, height * 0.72f)
+        canvas.drawRoundRect(bubble, 12f, 12f, paint)
+
+        tail.reset()
+        tail.moveTo(width * 0.38f, height * 0.72f)
+        tail.lineTo(width * 0.3f, height * 0.9f)
+        tail.lineTo(width * 0.56f, height * 0.72f)
+        canvas.drawPath(tail, paint)
     }
 }
