@@ -17,6 +17,7 @@ import android.widget.SeekBar
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.example.minifeed.data.LocalSocialState
+import com.example.minifeed.data.LocalSocialStore
 import com.example.minifeed.data.VideoItem
 import com.example.minifeed.feed.FeedPageHandle
 import com.example.minifeed.feed.FeedPlaybackState
@@ -31,6 +32,7 @@ import kotlin.math.min
 class VideoFeedAdapter(
     private val items: List<VideoItem>,
     private val coordinator: PlayerCoordinator,
+    private val socialStore: LocalSocialStore,
     private val lifecycleScope: CoroutineScope
 ) : RecyclerView.Adapter<VideoFeedAdapter.VideoViewHolder>() {
     private val socialStates = mutableMapOf<String, LocalSocialState>()
@@ -51,7 +53,7 @@ class VideoFeedAdapter(
     override fun getItemCount(): Int = items.size
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VideoViewHolder {
-        return VideoViewHolder(VideoPageView(parent.context), coordinator, lifecycleScope, socialStates)
+        return VideoViewHolder(VideoPageView(parent.context), coordinator, socialStore, lifecycleScope, socialStates)
     }
 
     override fun onBindViewHolder(holder: VideoViewHolder, position: Int) {
@@ -81,6 +83,7 @@ class VideoFeedAdapter(
     class VideoViewHolder(
         private val pageView: VideoPageView,
         private val coordinator: PlayerCoordinator,
+        private val socialStore: LocalSocialStore,
         private val lifecycleScope: CoroutineScope,
         private val socialStates: MutableMap<String, LocalSocialState>
     ) : RecyclerView.ViewHolder(pageView) {
@@ -99,22 +102,23 @@ class VideoFeedAdapter(
             pageView.showSpeedBadge(Tunables.NORMAL_PLAYBACK_SPEED, visible = false)
             pageView.hideComments()
             pageView.applyVideoTransform(item.width, item.height)
-            val state = socialStates.getOrPut(item.id) { item.social }
+            val state = socialStates.getOrPut(item.id) { socialStore.load(item.id, item.social) }
             pageView.title.text = item.title
             pageView.author.text = "@${item.author}"
             pageView.renderSocial(state)
             pageView.unsupported.visibility = if (item.playableVariant == null) View.VISIBLE else View.GONE
             pageView.like.setOnClickListener {
-                val current = socialStates[item.id] ?: item.social
+                val current = socialStates[item.id] ?: socialStore.load(item.id, item.social)
                 val next = current.copy(
                     liked = !current.liked,
                     likeCount = (current.likeCount + if (current.liked) -1 else 1).coerceAtLeast(0)
                 )
                 socialStates[item.id] = next
+                socialStore.save(item.id, next)
                 pageView.renderSocial(next)
             }
             pageView.comment.setOnClickListener {
-                pageView.showComments(socialStates[item.id] ?: item.social)
+                pageView.showComments(socialStates[item.id] ?: socialStore.load(item.id, item.social))
             }
             pageView.commentClose.setOnClickListener {
                 pageView.hideComments()
@@ -122,9 +126,10 @@ class VideoFeedAdapter(
             pageView.commentSend.setOnClickListener {
                 val text = pageView.commentInput.text?.toString()?.trim().orEmpty()
                 if (text.isEmpty()) return@setOnClickListener
-                val current = socialStates[item.id] ?: item.social
+                val current = socialStates[item.id] ?: socialStore.load(item.id, item.social)
                 val next = current.copy(comments = current.comments + text)
                 socialStates[item.id] = next
+                socialStore.save(item.id, next)
                 pageView.commentInput.text?.clear()
                 pageView.renderSocial(next)
                 pageView.showComments(next)
@@ -240,8 +245,12 @@ class VideoPageView(context: android.content.Context) : FrameLayout(context) {
     val textureView = TextureView(context)
     val title = TextView(context)
     val author = TextView(context)
-    val like = TextView(context)
-    val comment = TextView(context)
+    val like = LinearLayout(context)
+    val likeIcon = TextView(context)
+    val likeCount = TextView(context)
+    val comment = LinearLayout(context)
+    val commentIcon = TextView(context)
+    val commentCount = TextView(context)
     val commentsPanel = LinearLayout(context)
     val commentsTitle = TextView(context)
     val commentsList = LinearLayout(context)
@@ -289,13 +298,10 @@ class VideoPageView(context: android.content.Context) : FrameLayout(context) {
             gravity = Gravity.CENTER
             setPadding(12, 12, 24, 160)
         }
-        listOf(like, comment).forEach {
-            it.setTextColor(Color.WHITE)
-            it.textSize = 14f
-            it.gravity = Gravity.CENTER
-            it.setPadding(12, 20, 12, 20)
-            side.addView(it)
-        }
+        configureSocialButton(like, likeIcon, likeCount, HEART_OUTLINE)
+        configureSocialButton(comment, commentIcon, commentCount, COMMENT_ICON)
+        side.addView(like)
+        side.addView(comment)
         addView(side, LayoutParams(220, LayoutParams.WRAP_CONTENT, Gravity.END or Gravity.BOTTOM))
 
         commentsPanel.orientation = LinearLayout.VERTICAL
@@ -382,8 +388,10 @@ class VideoPageView(context: android.content.Context) : FrameLayout(context) {
     }
 
     fun renderSocial(state: LocalSocialState) {
-        like.text = if (state.liked) "Liked\n${state.likeCount}" else "Like\n${state.likeCount}"
-        comment.text = "Comments\n${state.comments.size}"
+        likeIcon.text = if (state.liked) HEART_FILLED else HEART_OUTLINE
+        likeIcon.setTextColor(if (state.liked) LIKE_RED else Color.BLACK)
+        likeCount.text = state.likeCount.coerceAtLeast(0).toString()
+        commentCount.text = state.comments.size.toString()
         if (commentsPanel.visibility == View.VISIBLE) {
             showComments(state)
         }
@@ -476,5 +484,26 @@ class VideoPageView(context: android.content.Context) : FrameLayout(context) {
 
     private fun heightPx(dp: Int): Int {
         return (dp * resources.displayMetrics.density).toInt()
+    }
+
+    private fun configureSocialButton(container: LinearLayout, icon: TextView, count: TextView, iconText: String) {
+        container.orientation = LinearLayout.VERTICAL
+        container.gravity = Gravity.CENTER
+        container.setPadding(12, 14, 12, 14)
+        icon.text = iconText
+        icon.textSize = 32f
+        icon.gravity = Gravity.CENTER
+        count.setTextColor(Color.WHITE)
+        count.textSize = 12f
+        count.gravity = Gravity.CENTER
+        container.addView(icon, LinearLayout.LayoutParams(72, 52))
+        container.addView(count, LinearLayout.LayoutParams(72, LinearLayout.LayoutParams.WRAP_CONTENT))
+    }
+
+    private companion object {
+        const val HEART_OUTLINE = "♡"
+        const val HEART_FILLED = "♥"
+        const val COMMENT_ICON = "☰"
+        const val LIKE_RED = 0xFFE91E63.toInt()
     }
 }

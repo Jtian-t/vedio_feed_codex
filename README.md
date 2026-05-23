@@ -38,7 +38,7 @@ From this repository root, build with:
 
 - [x] Full-screen vertical `RecyclerView` with `PagerSnapHelper`
 - [x] 10,000 generated Feed identities from 100 MP4 catalog entries
-- [x] Local like toggle with count updates and comment panel with input/list state
+- [x] Heart-based local like toggle with persisted count and comment panel with persisted input/list state
 - [x] Unsupported HLS-only handling
 - [x] Low-level audio-video `MediaCodec` playback with `AudioTrack` audio output
 - [x] Software PCM resampling for real speed-up playback up to `5.0x`
@@ -52,6 +52,10 @@ From this repository root, build with:
 - [x] Local proxy implementation behind feature flag
 - [x] Metrics events for first frame, cache, network, release, and frame drops
 - [ ] Physical-device Perfetto, Systrace, Profiler, and 200-swipe evidence
+
+## Local Social State
+
+Likes and comments are local-only. The feed stores `LocalSocialState` by `VideoItem.id` in `SharedPreferences`, hydrates RecyclerView bindings from that store, and writes updates after like toggles or comment submissions. The right-side action column uses compact icon-style controls: a black/dark heart for unliked state, a red heart for liked state, and separate numeric labels for like/comment counts.
 
 ## Playback Design
 
@@ -76,5 +80,6 @@ See [docs/architecture.md](docs/architecture.md) for the component-level design.
 - Drag the progress bar and release; seek is performed on release to avoid repeated decoder flushes.
 - Press Home or switch apps, wait a few seconds, then return from Recents. The current item should prepare again from the remembered position.
 - After a cold relaunch, wait until the first page is attached before fast swiping through multiple pages.
+
 
 

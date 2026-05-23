@@ -84,3 +84,10 @@ At high speed, source FPS multiplied by speed may exceed the display refresh rat
 ## Cache and Network
 
 The project includes an OkHttp range fetcher, memory/disk cache primitives, a preload scheduler, and a local proxy implementation. Proxy playback is currently behind `AppConfig.USE_PROXY_PLAYBACK`; direct MP4 playback remains the primary smoke-test path.
+
+## Local Social State
+
+The feed keeps local social state per `VideoItem.id`. `SharedPreferencesLocalSocialStore` persists liked state, like count, and local comments. `VideoFeedAdapter` keeps a small in-memory cache for cheap RecyclerView binding and writes through to the store on every like toggle or comment send.
+
+The right-side social column uses icon-style controls rather than word buttons. The like control renders a black/dark heart when unliked and a red heart when liked, with the count in a separate label. The comment control uses a compact icon and separate count label, and opens the bottom local comment panel.
+

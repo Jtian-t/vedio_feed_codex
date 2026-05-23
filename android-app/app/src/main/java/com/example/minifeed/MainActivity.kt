@@ -9,6 +9,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.example.minifeed.cache.MemoryDiskCacheStore
 import com.example.minifeed.cache.PreloadScheduler
 import com.example.minifeed.data.CatalogRepository
+import com.example.minifeed.data.SharedPreferencesLocalSocialStore
 import com.example.minifeed.network.BandwidthEstimator
 import com.example.minifeed.network.OkHttpRangeFetcher
 import com.example.minifeed.perf.InMemoryMetricsSink
@@ -39,6 +40,7 @@ class MainActivity : Activity() {
         val rangeFetcher = OkHttpRangeFetcher(metrics, bandwidthEstimator)
         val proxyServer = SimpleLocalProxyServer(cacheStore, rangeFetcher, metrics)
         val preloadScheduler = PreloadScheduler(cacheStore, bandwidthEstimator)
+        val socialStore = SharedPreferencesLocalSocialStore(this)
 
         val loadResult = CatalogRepository(this).loadGeneratedFeed()
         if (loadResult.validationErrors.isNotEmpty()) {
@@ -62,6 +64,7 @@ class MainActivity : Activity() {
         adapter = VideoFeedAdapter(
             items = loadResult.items,
             coordinator = coordinator,
+            socialStore = socialStore,
             lifecycleScope = scope
         )
         recyclerView.adapter = adapter
